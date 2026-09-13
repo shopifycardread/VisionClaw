@@ -17,20 +17,26 @@ jobs:
         with:
           xcode-version: 'latest-stable'
 
-      - name: Build IPA with Targeted Dependency Resolution
+      - name: Build IPA with Recursive Path Resolution
         run: |
-          WORKSPACE=$(find . -maxdepth 2 -name "*.xcworkspace" | head -n 1)
-          PROJECT=$(find . -maxdepth 2 -name "*.xcodeproj" | head -n 1)
+          # Search entire repository recursively for project or workspace files
+          WORKSPACE=$(find . -name "*.xcworkspace" -not -path "*/.*" -not -path "*/build/*" | head -n 1)
+          PROJECT=$(find . -name "*.xcodeproj" -not -path "*/.*" -not -path "*/build/*" | head -n 1)
 
           if [ -n "$WORKSPACE" ]; then
             TARGET_ARG="-workspace $WORKSPACE"
-          else
+            echo "Using workspace: $WORKSPACE"
+          elif [ -n "$PROJECT" ]; then
             TARGET_ARG="-project $PROJECT"
+            echo "Using project: $PROJECT"
+          else
+            echo "::error::No .xcworkspace or .xcodeproj file found in the repository."
+            exit 1
           fi
 
           SCHEME="CameraAccess"
 
-          # Resolve dependencies specifically for the iOS platform
+          # Resolve dependencies specifically for iOS platform target
           xcodebuild -resolvePackageDependencies \
             $TARGET_ARG \
             -scheme "$SCHEME" \
@@ -38,7 +44,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             -configuration Release
 
-          # Build binary using Ad-Hoc signing
+          # Build binary using Ad-Hoc code signing
           xcodebuild build \
             $TARGET_ARG \
             -scheme "$SCHEME" \
