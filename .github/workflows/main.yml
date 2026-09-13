@@ -17,9 +17,35 @@ jobs:
         with:
           xcode-version: 'latest-stable'
 
+      - name: Generate Secrets.swift
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          EXAMPLE_FILE=$(find . -name "Secrets.swift.example" | head -n 1)
+          
+          if [ -n "$EXAMPLE_FILE" ]; then
+            SECRETS_FILE="$(dirname "$EXAMPLE_FILE")/Secrets.swift"
+            cp "$EXAMPLE_FILE" "$SECRETS_FILE"
+            if [ -n "$GEMINI_API_KEY" ]; then
+              sed -i '' "s/YOUR_GEMINI_API_KEY/$GEMINI_API_KEY/g" "$SECRETS_FILE" || true
+            fi
+            echo "Successfully created Secrets.swift from template."
+          else
+            TARGET_DIR=$(find . -name "*.xcodeproj" -not -path "*/.*" -exec dirname {} \; | head -n 1)
+            SECRETS_DIR="$(dirname "$TARGET_DIR")/CameraAccess"
+            mkdir -p "$SECRETS_DIR"
+            cat << 'EOF' > "$SECRETS_DIR/Secrets.swift"
+            import Foundation
+
+            struct Secrets {
+                static let geminiApiKey = ""
+            }
+            EOF
+            echo "Generated fallback Secrets.swift file."
+          fi
+
       - name: Build IPA with Shared DerivedData
         run: |
-          # Navigate into project directory
           TARGET_DIR=$(find . -name "*.xcodeproj" -not -path "*/.*" -exec dirname {} \; | head -n 1)
           cd "$TARGET_DIR"
 
@@ -35,7 +61,6 @@ jobs:
           SCHEME="CameraAccess"
           DERIVED_DATA_PATH="$(pwd)/DerivedData"
 
-          # 1. Resolve SPM binary dependencies into explicit DerivedData
           xcodebuild -resolvePackageDependencies \
             $TARGET_ARG \
             -scheme "$SCHEME" \
@@ -43,7 +68,6 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$DERIVED_DATA_PATH"
 
-          # 2. Build using identical DerivedData path so LiveKitUniFFI & SwiftProtobuf modules resolve
           xcodebuild build \
             $TARGET_ARG \
             -scheme "$SCHEME" \
@@ -55,7 +79,6 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # 3. Package output from DerivedData into IPA
           mkdir -p Payload
           cp -r "$DERIVED_DATA_PATH/Build/Products/Release-iphoneos/"*.app Payload/
           zip -r VisionClaw.ipa Payload
