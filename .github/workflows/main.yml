@@ -22,7 +22,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           EXAMPLE_FILE=$(find . -name "Secrets.swift.example" | head -n 1)
-          
+
           if [ -n "$EXAMPLE_FILE" ]; then
             SECRETS_FILE="$(dirname "$EXAMPLE_FILE")/Secrets.swift"
             cp "$EXAMPLE_FILE" "$SECRETS_FILE"
@@ -34,13 +34,13 @@ jobs:
             TARGET_DIR=$(find . -name "*.xcodeproj" -not -path "*/.*" -exec dirname {} \; | head -n 1)
             SECRETS_DIR="$(dirname "$TARGET_DIR")/CameraAccess"
             mkdir -p "$SECRETS_DIR"
-            cat << 'EOF' > "$SECRETS_DIR/Secrets.swift"
-            import Foundation
-
-            struct Secrets {
-                static let geminiApiKey = ""
-            }
-            EOF
+            
+            echo 'import Foundation' > "$SECRETS_DIR/Secrets.swift"
+            echo '' >> "$SECRETS_DIR/Secrets.swift"
+            echo 'struct Secrets {' >> "$SECRETS_DIR/Secrets.swift"
+            echo '    static let geminiApiKey = ""' >> "$SECRETS_DIR/Secrets.swift"
+            echo '}' >> "$SECRETS_DIR/Secrets.swift"
+            
             echo "Generated fallback Secrets.swift file."
           fi
 
