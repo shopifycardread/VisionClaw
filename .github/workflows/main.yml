@@ -9,30 +9,43 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest-stable'
 
-      - name: Build Unsigned IPA
+      - name: Build IPA with Ad-Hoc Signing
         run: |
-          PROJ_PATH=$(find . -name "*.xcodeproj" | head -n 1)
-          PROJ_DIR=$(dirname "$PROJ_PATH")
-          cd "$PROJ_DIR"
-          
-          SCHEME=$(xcodebuild -list -project *.xcodeproj | grep -A 5 "Schemes:" | tail -n +2 | head -n 1 | xargs)
-          
+          WORKSPACE=$(find . -maxdepth 2 -name "*.xcworkspace" | head -n 1)
+          PROJECT=$(find . -maxdepth 2 -name "*.xcodeproj" | head -n 1)
+
+          if [ -n "$WORKSPACE" ]; then
+            TARGET_ARG="-workspace $WORKSPACE"
+          else
+            TARGET_ARG="-project $PROJECT"
+          fi
+
+          SCHEME="CameraAccess"
+
+          # Resolve dependencies
+          xcodebuild -resolvePackageDependencies $TARGET_ARG -scheme "$SCHEME"
+
+          # Build using Ad-Hoc signing so LiveKit and SPM dependencies compile successfully
           xcodebuild build \
-            -project *.xcodeproj \
+            $TARGET_ARG \
             -scheme "$SCHEME" \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -configuration Release \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             BUILD_DIR=build
 
+          # Package compiled app binary into IPA
           mkdir -p Payload
           cp -r build/Release-iphoneos/*.app Payload/
           zip -r VisionClaw.ipa Payload
@@ -41,4 +54,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: VisionClaw-IPA
-          path: "**/VisionClaw.ipa"
+          path: VisionClaw.ipa
