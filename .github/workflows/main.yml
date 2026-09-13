@@ -17,52 +17,51 @@ jobs:
         with:
           xcode-version: 'latest-stable'
 
-      - name: Build IPA with Recursive Path Resolution
+      - name: Build IPA with Shared DerivedData
         run: |
-          # Search entire repository recursively for project or workspace files
-          WORKSPACE=$(find . -name "*.xcworkspace" -not -path "*/.*" -not -path "*/build/*" | head -n 1)
-          PROJECT=$(find . -name "*.xcodeproj" -not -path "*/.*" -not -path "*/build/*" | head -n 1)
+          # Navigate into project directory
+          TARGET_DIR=$(find . -name "*.xcodeproj" -not -path "*/.*" -exec dirname {} \; | head -n 1)
+          cd "$TARGET_DIR"
+
+          WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
+          PROJECT=$(find . -maxdepth 1 -name "*.xcodeproj" | head -n 1)
 
           if [ -n "$WORKSPACE" ]; then
             TARGET_ARG="-workspace $WORKSPACE"
-            echo "Using workspace: $WORKSPACE"
-          elif [ -n "$PROJECT" ]; then
-            TARGET_ARG="-project $PROJECT"
-            echo "Using project: $PROJECT"
           else
-            echo "::error::No .xcworkspace or .xcodeproj file found in the repository."
-            exit 1
+            TARGET_ARG="-project $PROJECT"
           fi
 
           SCHEME="CameraAccess"
+          DERIVED_DATA_PATH="$(pwd)/DerivedData"
 
-          # Resolve dependencies specifically for iOS platform target
+          # 1. Resolve SPM binary dependencies into explicit DerivedData
           xcodebuild -resolvePackageDependencies \
             $TARGET_ARG \
             -scheme "$SCHEME" \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -configuration Release
+            -derivedDataPath "$DERIVED_DATA_PATH"
 
-          # Build binary using Ad-Hoc code signing
+          # 2. Build using identical DerivedData path so LiveKitUniFFI & SwiftProtobuf modules resolve
           xcodebuild build \
             $TARGET_ARG \
             -scheme "$SCHEME" \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -configuration Release \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            BUILD_DIR=build
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Package into IPA
+          # 3. Package output from DerivedData into IPA
           mkdir -p Payload
-          cp -r build/Release-iphoneos/*.app Payload/
+          cp -r "$DERIVED_DATA_PATH/Build/Products/Release-iphoneos/"*.app Payload/
           zip -r VisionClaw.ipa Payload
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: VisionClaw-IPA
-          path: VisionClaw.ipa
+          path: "**/VisionClaw.ipa"
